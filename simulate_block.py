@@ -1,0 +1,108 @@
+import os
+import sys
+import cryo
+from web3 import Web3
+
+# Retrieve the Ethereum RPC URL from environment variables
+ETH_RPC = "https://rpc.notadegen.com/eth"
+
+
+TARGET_BLOCK = 15596647#sys.argv[0]#
+
+swap_tx_array = []
+swap_senders = []
+swap_recipients = []
+swap_tokens_sold = []
+swap_tokens_bought = []
+
+def hex_to_checksum_address(hex_address):
+    # Convert the hex address to a checksum address
+    checksum_address = Web3.to_checksum_address(hex_address)
+    return checksum_address
+
+def extract_swaps_details(target_block):
+    transactions = cryo.collect(
+        "transactions", 
+        blocks=["{}".format(target_block)], 
+        rpc=ETH_RPC, 
+        output_format="pandas", 
+        hex=True
+    )
+
+    txn_hashes = transactions['transaction_hash'].values
+    txn_hashes = txn_hashes[::-1]
+    ## Loop through transactions and collect ERC20 transfer logs
+    swap_topics = ['0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822']
+    for txn_hash in txn_hashes:
+        logs = cryo.collect(
+            "logs", 
+            txs=["{}".format(txn_hash)], 
+            rpc=ETH_RPC, 
+            output_format="pandas", 
+            hex=True
+        )
+        ## Check if the transaction is a swap and break if not 0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67
+        if not logs['topic0'].eq(swap_topics[0]).any():
+            continue
+        
+        recipient = "0x"+logs[logs['topic0']=='0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822']['topic1'].iloc[0][-40:]
+        sender = "0x"+logs[logs['topic0']=='0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822']['topic2'].iloc[0][-40:]
+        
+        token_addresses = logs[logs['topic0']=='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef']['address']
+        token_sold = token_addresses.iloc[0]
+        token_bought = token_addresses.iloc[1]
+
+        swap_tx_array.append(txn_hash)
+        swap_senders.append(hex_to_checksum_address(sender))
+        swap_recipients.append(hex_to_checksum_address(recipient))
+        swap_tokens_bought.append(hex_to_checksum_address(token_bought))
+        swap_tokens_sold.append(hex_to_checksum_address(token_sold))
+
+def generate_string_from_addresses_with_prefix(addresses, prefix):
+    string = "["
+    for address in addresses:
+        string += f"{prefix}({address}), "
+    string = string.rstrip(", ")  # Remove the trailing comma and space
+    string += "]"
+    return string
+
+def generate_string_from_addresses(addresses):
+    string = "["
+    for address in addresses:
+        string += f"{address}, "
+    string = string.rstrip(", ")  # Remove the trailing comma and space
+    string += "]"
+    return string
+
+def replace_and_save(input_file, output_file, replacements):
+    try:
+        # Read the content from the input file
+        with open(input_file, 'r') as file:
+            content = file.read()
+
+        # Replace certain strings
+        for old_string, new_string in replacements.items():
+            content = content.replace(old_string, new_string)
+
+        # Save the modified content to the output file
+        with open(output_file, 'w') as file:
+            file.write(content)
+
+        print("File successfully modified and saved as", output_file)
+    except FileNotFoundError:
+        print("Input file not found!")
+
+extract_swaps_details(TARGET_BLOCK)
+replacements = {
+    "<swap_tx_array>": generate_string_from_addresses_with_prefix(swap_tx_array, "bytes32"),
+    "<swap_senders>": generate_string_from_addresses_with_prefix(swap_senders, "address"),
+    "<swap_recipients>": generate_string_from_addresses_with_prefix(swap_recipients, "address"),
+    "<swap_tokens_bought>": generate_string_from_addresses(swap_tokens_bought),
+    "<swap_tokens_sold>": generate_string_from_addresses(swap_tokens_sold),
+    "<tx_length>": str(len(swap_tx_array)),  # Length of the swap_tx_array
+    "<block_number>": f"{TARGET_BLOCK-1}"      # Block number at which the swaps occurred
+}
+
+replace_and_save("./fixtures/contract_template_fork_and_transact", "./test/Fork_Simulate.sol", replacements)
+
+os.system('forge test --mc ForkSimulate -vvvvv    ')
