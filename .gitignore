@@ -12,3 +12,12 @@ docs/
 
 # Dotenv file
 .env
+
+# System files
+.DS_Store
+
+# Local development 
+ .cryo/
+.cryo_data/
+.gas-snapshot
+*.csv.gz
