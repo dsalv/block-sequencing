@@ -6,6 +6,7 @@ import os
 import sys
 import codecs
 import pandas as pd 
+from tqdm import tqdm
 from dotenv import dotenv_values
  
 csv.field_size_limit(sys.maxsize)
@@ -27,32 +28,17 @@ def execute_bash_script(script_path, hour_range=None):
         print(f"Error executing Bash script: {e}")
 
 def read_csv_gz(file_path, columns):
-    # data = []
-    # with gzip.open(file_path, 'rt') as f:
-    #     reader = csv.DictReader(f, delimiter='\t')
-    #     for row in reader:
-    #         data.append({col: row[col] for col in columns})
-    # return data
-    # try:
     with gzip.open(file_path, 'rt') as f:
         df = pd.read_csv(f, delimiter='\t', encoding='utf-16')
-        selected_columns = df[columns]
+        selected_columns = df[df['status']=='confirmed'][columns]
         data = selected_columns.to_dict(orient='records')
         return data
-    # except Exception as e:
-    #     print(f"An error occurred: {e}")
-    #     return None
+    print("CSV file read successfully.")
 
-def write_to_dynamodb(table_name, data, aws_access_key_id, aws_secret_access_key, aws_region):
-    # Initialize DynamoDB client with access key and secret key
-    dynamodb = boto3.client('dynamodb', 
-                            aws_access_key_id=aws_access_key_id,
-                            aws_secret_access_key=aws_secret_access_key,
-                            region_name=aws_region)
-
+def write_to_dynamodb(table_name, data, dynamodb):
     # Write data to DynamoDB table
     if data is not None:
-        for item in data:
+        for item in tqdm(data):
             # Convert attribute values to DynamoDB data types
             item = {key: {'S': value} if isinstance(value, str) else {'N': str(value)} for key, value in item.items()}
             # item = {"detecttime": item["detecttime"], "hash": item["hash"]}
@@ -125,18 +111,23 @@ for year in range(start_year, end_year + 1):
 
                 # Read CSV.gz file and extract columns
                 data = read_csv_gz(csv_gz_file_path, columns_to_extract)
+                # Initialize DynamoDB client with access key and secret key
+                dynamodb = boto3.client('dynamodb', 
+                                        aws_access_key_id=aws_access_key_id,
+                                        aws_secret_access_key=aws_secret_access_key,
+                                        region_name=aws_region)
 
                 # Write extracted data to DynamoDB
-                write_to_dynamodb(dynamodb_table_name, data, aws_access_key_id, aws_secret_access_key, aws_region)
+                write_to_dynamodb(dynamodb_table_name, data, dynamodb)
 
-                # Query data from DynamoDB table by hash
-                if data is not None:
-                    for item in data:
-                        items = query_dynamodb_by_hash(dynamodb_table_name, item['hash'], aws_access_key_id, aws_secret_access_key, aws_region)
-                    print("Items found:")
-                    for item in items:
-                        print(item)
-                        # print(type(item['detecttime']['S']))
+                # # Query data from DynamoDB table by hash
+                # if data is not None:
+                #     for item in data:
+                #         items = query_dynamodb_by_hash(dynamodb_table_name, item['hash'], aws_access_key_id, aws_secret_access_key, aws_region)
+                #     print("Items found:")
+                #     for item in items:
+                #         print(item)
+                #         # print(type(item['detecttime']['S']))
 
                 # Delete the CSV file after processing
                 os.remove(csv_gz_file_path)
