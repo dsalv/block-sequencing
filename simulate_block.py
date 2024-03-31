@@ -11,19 +11,12 @@ ETH_RPC = "https://rpc.notadegen.com/eth"
 
 TARGET_BLOCK = 15596644#sys.argv[0]#
 
-# Initialize the arrays to store the swap details
-swap_tx_array = []
-swap_senders = []
-swap_recipients = []
-swap_tokens_sold = []
-swap_tokens_bought = []
-
 def hex_to_checksum_address(hex_address):
     # Convert the hex address to a checksum address
     checksum_address = Web3.to_checksum_address(hex_address)
     return checksum_address
 
-def extract_swaps_details(target_block, priority_fee = True):
+def extract_swaps_details(target_block, swaps, priority_fee = True):
     transactions = cryo.collect(
         "transactions", 
         blocks=["{}".format(target_block)], 
@@ -33,13 +26,14 @@ def extract_swaps_details(target_block, priority_fee = True):
     )
 
     if priority_fee:
-        transactions = transactions.sort_values(by='gas_price', ascending=True)
+        transactions['gas_index'] = transactions['gas_price'].rank(method='first', ascending=True)
     
     txn_hashes = transactions['transaction_hash'].values
     txn_hashes = txn_hashes[::-1]
 
     ## Loop through transactions and collect ERC20 transfer logs
     swap_topic = '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822'
+
     for txn_hash in txn_hashes:
         logs = cryo.collect(
             "logs", 
@@ -52,6 +46,8 @@ def extract_swaps_details(target_block, priority_fee = True):
         ## Check if the transaction is a swap and break if not 0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67
         if not logs['topic0'].eq(swap_topic).any():
             continue
+        else:
+            transactions.loc[transactions['transaction_hash'] == txn_hash, 'mev'] = "swap"
         
         ## sort logs by log_index
         logs = logs.sort_values(by='log_index', ascending=True)
@@ -72,13 +68,13 @@ def extract_swaps_details(target_block, priority_fee = True):
         except:
             print(logs)
             print(token_addresses)
-    
+
         ## Save extracted values
-        swap_tx_array.append(txn_hash)
-        swap_senders.append(hex_to_checksum_address(sender))
-        swap_recipients.append(hex_to_checksum_address(recipient))
-        swap_tokens_bought.append(hex_to_checksum_address(token_bought))
-        swap_tokens_sold.append(hex_to_checksum_address(token_sold))
+        swaps['swap_tx_array'].append(txn_hash)
+        swaps['swap_senders'].append(hex_to_checksum_address(sender))
+        swaps['swap_recipients'].append(hex_to_checksum_address(recipient))
+        swaps['swap_tokens_bought'].append(hex_to_checksum_address(token_bought))
+        swaps['swap_tokens_sold'].append(hex_to_checksum_address(token_sold))
 
 def generate_string_from_addresses_with_prefix(addresses, prefix):
     ## Generate a string from a list of addresses with a prefix. The string is used in the template.
@@ -116,19 +112,40 @@ def replace_and_save(input_file, output_file, replacements):
     except FileNotFoundError:
         print("Input file not found!")
 
-## Prepare simulation details
-extract_swaps_details(TARGET_BLOCK)
-## Prepare the replacements for the template
-replacements = {
-    "<swap_tx_array>": generate_string_from_addresses_with_prefix(swap_tx_array, "bytes32"),
-    "<swap_senders>": generate_string_from_addresses_with_prefix(swap_senders, "address"),
-    "<swap_recipients>": generate_string_from_addresses_with_prefix(swap_recipients, "address"),
-    "<swap_tokens_bought>": generate_string_from_addresses(swap_tokens_bought),
-    "<swap_tokens_sold>": generate_string_from_addresses(swap_tokens_sold),
-    "<tx_length>": str(len(swap_tx_array)),  # Length of the swap_tx_array
-    "<block_number>": f"{TARGET_BLOCK-1}"      # Block number at which the swaps occurred
-}
-## Prepare the template for the simulation and save it as solidity file
-replace_and_save("./fixtures/contract_template_fork_and_transact", "./test/Fork_Simulate.sol", replacements)
-## Run the simulation
-os.system('forge test --mc ForkSimulate -vvvvv    ')
+def simulate_block(target_block):
+    # Initialize the arrays to store the swap details
+    swap_tx_array = []
+    swap_senders = []
+    swap_recipients = []
+    swap_tokens_sold = []
+    swap_tokens_bought = []
+
+    swaps = {
+        "swap_tx_array": swap_tx_array,
+        "swap_senders": swap_senders,
+        "swap_recipients": swap_recipients,
+        "swap_tokens_sold": swap_tokens_sold,
+        "swap_tokens_bought": swap_tokens_bought
+    }
+    
+    ## Prepare simulation details
+    extract_swaps_details(target_block, swaps)
+
+    ## Prepare the replacements for the template
+    replacements = {
+        "<swap_tx_array>": generate_string_from_addresses_with_prefix(swap_tx_array, "bytes32"),
+        "<swap_senders>": generate_string_from_addresses_with_prefix(swap_senders, "address"),
+        "<swap_recipients>": generate_string_from_addresses_with_prefix(swap_recipients, "address"),
+        "<swap_tokens_bought>": generate_string_from_addresses(swap_tokens_bought),
+        "<swap_tokens_sold>": generate_string_from_addresses(swap_tokens_sold),
+        "<tx_length>": str(len(swap_tx_array)),  # Length of the swap_tx_array
+        "<block_number>": f"{TARGET_BLOCK-1}"      # Block number at which the swaps occurred
+    }
+    ## Prepare the template for the simulation and save it as solidity file
+    replace_and_save("./fixtures/contract_template_fork_and_transact", "./test/Fork_Simulate.sol", replacements)
+
+    ## Run the simulation
+    os.system('forge test --mc ForkSimulate -vvvvv    ')
+
+
+simulate_block(TARGET_BLOCK)
