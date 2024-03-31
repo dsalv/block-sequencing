@@ -35,15 +35,17 @@ def read_csv_gz(file_path, columns):
         return data
     print("CSV file read successfully.")
 
-def write_to_dynamodb(table_name, data, dynamodb):
-    # Write data to DynamoDB table
+def write_to_dynamodb(table_name, data, dynamodb, batch_size=25):
+    # Write data to DynamoDB table in batches
     if data is not None:
-        for item in tqdm(data):
-            # Convert attribute values to DynamoDB data types
-            item = {key: {'S': value} if isinstance(value, str) else {'N': str(value)} for key, value in item.items()}
-            # item = {"detecttime": item["detecttime"], "hash": item["hash"]}
-            dynamodb.put_item(TableName=table_name, Item=item)
-    print("Data written to DynamoDB table.")
+        for i in tqdm(range(0, len(data), batch_size)):
+            batch_data = data[i:min(i+batch_size, len(data))]
+            with dynamodb.batch_writer(TableName=table_name) as batch:
+                for item in tqdm(batch_data):
+                    # Convert attribute values to DynamoDB data types
+                    item = {key: {'S': value} if isinstance(value, str) else {'N': str(value)} for key, value in item.items()}
+                    batch.put_item(Item=item)
+    print("Data written to DynamoDB table in batches.")
 
 def query_dynamodb_by_hash(table_name, hash_value, aws_access_key_id, aws_secret_access_key, aws_region):
     # Initialize DynamoDB client with access key and secret key
@@ -104,7 +106,7 @@ for year in range(start_year, end_year + 1):
     
                 hour_range = f"{year}{str(month).zfill(2)}{str(day).zfill(2)}:{hour}-{hour}"  
                 # Call the function to execute the Bash script
-                execute_bash_script(bash_script_path, hour_range=hour_range)
+                # execute_bash_script(bash_script_path, hour_range=hour_range)
 
                 # Path to the CSV.gz file
                 csv_gz_file_path = f"./{year}{str(month).zfill(2)}{str(day).zfill(2)}_{str(hour).zfill(2)}.csv.gz"
