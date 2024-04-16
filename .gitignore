@@ -21,3 +21,6 @@ docs/
 .cryo_data/
 .gas-snapshot
 *.csv.gz
+
+# python cache
+__pycache__/
