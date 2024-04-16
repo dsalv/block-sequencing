@@ -33,7 +33,8 @@ contract ForkTransactTestV1 is DSTest {
     function testTransact() public {
 
         // Enter forking mode at block: https://etherscan.io/block/{block_number}
-        uint256 fork = vm.createFork("https://rpc.notadegen.com/eth", 15596644);
+        // uint256 fork = vm.createFork("https://rpc.notadegen.com/eth", 15596644);
+        uint256 fork = vm.createFork("https://mainnet.infura.io/v3/e03ab6a6e78c499687b8485ce3ccc920", 15596644);
         vm.selectFork(fork);
 
         // a random transfer transaction in the block: https://etherscan.io/tx/0xaba74f25a17cf0d95d1c6d0085d6c83fb8c5e773ffd2573b99a953256f989c89
@@ -57,23 +58,24 @@ contract ForkTransactTestV1 is DSTest {
             // token sold
             TokenInterface token_sold = TokenInterface(tokens_sold[i]);
 
-
-            console.log("initial sender ETH balance: ", sender.balance);
-            console.log("initial sender balance: ", token_sold.balanceOf(sender));
+            console.log("txn_hash: ");
+            console.logBytes32(tx_array[i]);
+            console.log("eth_balance_before: ", sender.balance);
+            console.log("token_sold_balance_before: ", token_sold.balanceOf(sender));
             uint256 shitcoinBalance = token_sold.balanceOf(sender);
-            console.log("initial sender shitcoin (token bought) balance: ", token_bought.balanceOf(sender));
+            console.log("token_bought_balance_before: ", token_bought.balanceOf(sender));
 
             //execute the transaction
             vm.transact(tx_array[i]);
         
-            console.log("final sender ETH balance: ", sender.balance);
-            console.log("final sender token sold balance: ", token_sold.balanceOf(sender));
+            console.log("eth_balance_after: ", sender.balance);
+            console.log("token_sold_balance_after: ", token_sold.balanceOf(sender));
             uint256 newShitcoinBalance = token_bought.balanceOf(sender);
-            console.log("final sender shitcoin (token bought) balance: ", newShitcoinBalance);
+            console.log("token_bought_balance_after: ", newShitcoinBalance);
 
-            uint256 shitcoinBalanceDifference = newShitcoinBalance - shitcoinBalance;
-            console.log("The shitcoin difference: ", shitcoinBalanceDifference);
-            console.log("---------------------------------------------");
+            // uint256 shitcoinBalanceDifference = newShitcoinBalance - shitcoinBalance;
+            // console.log("The shitcoin difference: ", shitcoinBalanceDifference);
+            // console.log("---------------------------------------------");
         }
     }
 }
