@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: Unlicense
+pragma solidity ^0.8.6;
+
+import "forge-std/console.sol";
+import "ds-test/test.sol";
+
+// Cheatcodes
+interface Vm {
+    struct Log {
+        bytes32[] topics;
+        bytes data;
+    }
+
+    function createFork(string memory, uint256) external returns (uint256);
+
+    function selectFork(uint256) external;
+
+    function transact(bytes32) external;
+
+    function recordLogs() external;
+
+    function getRecordedLogs() external view returns (Log[] memory);
+}
+
+// ERC20 interface for the shitcoin
+interface TokenInterface {
+    function balanceOf(address) external view returns (uint256);
+}
+
+contract ForkSimulate is DSTest {
+    Vm vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+
+    function testTransact() public {
+
+        // Enter forking mode at block: https://etherscan.io/block/{block_number}
+        // uint256 fork = vm.createFork("https://rpc.notadegen.com/eth", <block_number>);
+        vm.selectFork(fork);
+
+        // a random transfer transaction in the block: https://etherscan.io/tx/0xaba74f25a17cf0d95d1c6d0085d6c83fb8c5e773ffd2573b99a953256f989c89
+        bytes32[<tx_length>] memory tx_array = <swap_tx_array>;
+        // traders
+        address[<tx_length>] memory senders = <swap_senders>;
+        // routers
+        address[<tx_length>] memory recipients = <swap_recipients>;
+        // pools
+        address[<tx_length>] memory pools = <swap_pools>;
+
+        // tokens sold
+        address[<tx_length>] memory tokens_sold = <swap_tokens_sold>;
+        // tokens bought
+        address[<tx_length>] memory tokens_bought = <swap_tokens_bought>;
+
+        for (uint i = 0; i < tx_array.length; i++) {
+
+            // skip if token_sold[i] is 0x0 (not dex swap)
+            if (tokens_sold[i] == address(0)) {
+                vm.transact(tx_array[i]);
+                continue;
+            }
+            
+            address sender = senders[i];
+            address recipient = recipients[i];
+
+            // token bought
+            TokenInterface token_bought = TokenInterface(tokens_bought[i]);
+            // token sold
+            TokenInterface token_sold = TokenInterface(tokens_sold[i]);
+
+            console.log("txn_hash: ");
+            console.logBytes32(tx_array[i]);
+
+            console.log("eth_balance_before_sender: ", sender.balance);
+            console.log("eth_balance_before_recipient: ", recipient.balance);
+
+            console.log("token_sold_balance_before_sender: ", token_sold.balanceOf(sender));
+            console.log("token_sold_balance_before_recipient: ", token_sold.balanceOf(recipient));
+
+            console.log("token_bought_balance_before_sender: ", token_bought.balanceOf(sender));
+            console.log("token_bought_balance_before_recipient: ", token_bought.balanceOf(recipient));
+
+            console.log("token_bought_pool_before: ", token_bought.balanceOf(pools[i]));
+            console.log("token_sold_pool_before: ", token_sold.balanceOf(pools[i]));
+
+            //execute the transaction
+            try vm.transact(tx_array[i]) {
+                console.log("eth_balance_after: ", sender.balance);
+                console.log("token_sold_balance_after (sender): ", token_sold.balanceOf(sender));
+                console.log("token_sold_balance_after (recipient): ", token_sold.balanceOf(recipient));
+
+                console.log("token_bought_balance_after (sender): ", token_bought.balanceOf(sender));
+                console.log("token_bought_balance_after (recipient): ", token_bought.balanceOf(recipient));
+
+                console.log("the level of the shitcoin pool after: ", token_bought.balanceOf(0x888999fcBF3F094351Ee00BA7dF9C006Af738C32));
+                console.log("the level of weth pool after: ", token_sold.balanceOf(0x888999fcBF3F094351Ee00BA7dF9C006Af738C32));
+            } catch (bytes memory error) {
+                console.log("Transaction failed");
+            }
+
+        }
+    }
+}
